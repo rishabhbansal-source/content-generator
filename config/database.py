@@ -11,11 +11,11 @@ load_dotenv()
 class DatabaseConfig:
     """Database configuration class."""
 
-    host: str = os.getenv("DB_HOST", "localhost")
-    port: int = int(os.getenv("DB_PORT", "5432"))
-    database: str = os.getenv("DB_NAME", "college_dms")
-    user: str = os.getenv("DB_USER", "")
-    password: str = os.getenv("DB_PASSWORD", "")
+    host: str = os.getenv("DB_HOST")
+    port: int = int(os.getenv("DB_PORT"))
+    database: str = os.getenv("DB_NAME")
+    user: str = os.getenv("DB_USER")
+    password: str = os.getenv("DB_PASSWORD")
 
     def get_connection_string(self) -> str:
         """Get PostgreSQL connection string."""
