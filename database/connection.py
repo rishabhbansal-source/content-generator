@@ -38,6 +38,70 @@ class DatabaseConnection:
                 **params
             )
             logger.info("Database connection pool initialized successfully")
+        except ValueError as e:
+            # Configuration errors (missing env vars)
+            logger.error(f"Database configuration error: {e}")
+            raise ValueError(
+                f"{str(e)}\n\n"
+                "Please create a .env file in the project root with the following variables:\n"
+                "DB_HOST=\n"
+                "DB_PORT=\n"
+                "DB_NAME=\n"
+                "DB_USER=\n"
+                "DB_PASSWORD=\n"
+            ) from e
+        except psycopg2.OperationalError as e:
+            # Connection errors (server not running, wrong credentials, etc.)
+            logger.error(f"Database connection error: {e}")
+            error_msg = str(e)
+            host = params.get('host')
+            port = params.get('port')
+            
+            if "Connection refused" in error_msg:
+                solutions = []
+                
+                # Check if this looks like a cloud deployment
+                if host == None:
+                    solutions.append(
+                        "⚠️ You're trying to connect to localhost, but this appears to be a cloud deployment.\n"
+                        "   Use a remote database service instead (e.g., Supabase, AWS RDS, Neon, etc.)"
+                    )
+                
+                solutions.extend([
+                    f"🔌 Connection Details: {host}:{port}",
+                    "",
+                    "📋 Possible solutions:",
+                    "",
+                    "1. **For Local Development:**",
+                    "   - macOS: brew services start postgresql",
+                    "   - Linux: sudo systemctl start postgresql",
+                    "   - Windows: Check Services panel",
+                    "",
+                    "2. **For Cloud Deployments (Streamlit Cloud, etc.):**",
+                    "   - Use a remote PostgreSQL database (Supabase, AWS RDS, Neon, etc.)",
+                    "   - Set DB_HOST to your database provider's hostname",
+                    "   - Configure environment variables in your deployment platform",
+                    "",
+                    "3. **Verify Configuration:**",
+                    "   - Check DB_HOST and DB_PORT in your .env file",
+                    "   - Ensure firewall rules allow connections from your deployment IP",
+                    "   - Verify database credentials are correct",
+                    "",
+                    "4. **Test Connection:**",
+                    "   - Try connecting with: psql -h <host> -p <port> -U <user> -d <database>"
+                ])
+                
+                raise ConnectionError("\n".join(solutions)) from e
+            else:
+                raise ConnectionError(
+                    f"Database connection failed: {error_msg}\n\n"
+                    "Please verify:\n"
+                    "1. Database server is running and accessible\n"
+                    "2. Database credentials in .env are correct\n"
+                    "3. Database name exists\n"
+                    "4. User has proper permissions\n"
+                    "5. Network/firewall allows connections from your location"
+                ) from e
         except Exception as e:
             logger.error(f"Failed to initialize database connection pool: {e}")
             raise

@@ -235,11 +235,45 @@ def sidebar_configuration():
                         return
 
                     # Initialize database
-                    db = DatabaseConnection()
-                    if db.test_connection():
-                        st.success("✅ Database connected!")
-                    else:
-                        st.error("❌ Database connection failed")
+                    try:
+                        db = DatabaseConnection()
+                        if db.test_connection():
+                            st.success("✅ Database connected!")
+                        else:
+                            st.error("❌ Database connection test failed")
+                            return
+                    except (ValueError, ConnectionError) as db_error:
+                        # Display detailed database connection error
+                        error_msg = str(db_error)
+                        st.error("❌ Database Connection Failed")
+                        with st.expander("🔍 Error Details & Solutions", expanded=True):
+                            st.markdown(f"**Error:** {error_msg}")
+                            st.markdown("---")
+                            st.markdown("### 📋 Setup Instructions")
+                            st.markdown("""
+                            1. **Create a `.env` file** in your project root with:
+                               ```env
+                               DB_HOST=your_database_host
+                               DB_PORT=5432
+                               DB_NAME=your_database_name
+                               DB_USER=your_username
+                               DB_PASSWORD=your_password
+                               ```
+                            
+                            2. **If using a local PostgreSQL server:**
+                               - Make sure PostgreSQL is running
+                               - Verify credentials in `.env`
+                            
+                            3. **If using a remote database (recommended for cloud deployments):**
+                               - Use your database provider's connection details
+                               - Ensure firewall rules allow connections from your IP
+                               - For Streamlit Cloud: Use environment variables in app settings
+                            """)
+                        logger.error(f"Database initialization error: {db_error}", exc_info=True)
+                        return
+                    except Exception as db_error:
+                        st.error(f"❌ Database initialization failed: {str(db_error)}")
+                        logger.error(f"Database initialization error: {db_error}", exc_info=True)
                         return
 
                     # Store database connection
