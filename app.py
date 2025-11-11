@@ -666,26 +666,25 @@ Tone: Systematic, thorough, information-rich."""
         # Button to load selected template
         if selected_template != "Custom (Write your own)":
             if st.button("📋 Load Template"):
-                st.session_state.user_prompt = template_text
+                # Use the text area's widget key directly
+                st.session_state.custom_prompt_input = template_text
                 st.rerun()
 
-        # User enters their own prompt or edits template
-        # Use session state as the source of truth
-        if 'user_prompt' not in st.session_state or st.session_state.user_prompt is None:
-            st.session_state.user_prompt = ""
+        # Initialize the text area widget state if needed
+        if 'custom_prompt_input' not in st.session_state:
+            st.session_state.custom_prompt_input = ""
 
+        # Text area - uses its own key in session state
         custom_prompt = st.text_area(
             "Content prompt/instructions",
-            value=st.session_state.user_prompt,
             placeholder="Example: Write a comprehensive guide covering admission process, fees structure, top courses, and placement statistics.",
             height=250,
             key="custom_prompt_input",
             help="Describe what you want in the content - the angle, tone, key points to cover, etc."
         )
 
-        # Only update if user actually changed the text
-        if custom_prompt != st.session_state.user_prompt:
-            st.session_state.user_prompt = custom_prompt
+        # Keep user_prompt in sync for other parts of the app
+        st.session_state.user_prompt = custom_prompt
 
         # Show styled box if prompt is entered
         if st.session_state.user_prompt:
