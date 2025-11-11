@@ -51,6 +51,11 @@ Create a comprehensive outline that:
 5. Maintains the tone: {metadata.tone}
 6. Targets length: {metadata.ideal_length}"""
 
+        # Build trends section separately to avoid f-string backslash issue
+        trends_section = ""
+        if serp_context:
+            trends_section = f"Current Trends/Context:\n{serp_context}\n\n"
+        
         prompt = f"""Create a detailed content outline for this topic:
 
 Title: {content_prompt['title']}
@@ -63,9 +68,7 @@ Typical Sections: {', '.join(metadata.typical_sections)}
 Available Data:
 {data_summary}
 
-{f"Current Trends/Context:\n{serp_context}\n" if serp_context else ""}
-
-Create a detailed outline with:
+{trends_section}Create a detailed outline with:
 - Main sections/headings
 - Sub-sections
 - Key points to cover in each section

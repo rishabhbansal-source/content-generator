@@ -65,6 +65,15 @@ Format:
         # Create outline text from template
         outline_text = self._create_outline_text(template)
 
+        # Build optional sections separately to avoid f-string backslash issue
+        trends_section = ""
+        if serp_context:
+            trends_section = f"Current Context/Trends:\n{serp_context}\n\n"
+        
+        instructions_section = ""
+        if additional_instructions:
+            instructions_section = f"Additional Instructions:\n{additional_instructions}\n\n"
+
         prompt = f"""Write comprehensive content following this outline:
 
 # {template.get('title', 'Content')}
@@ -75,11 +84,7 @@ Outline:
 Available Data to Incorporate:
 {data}
 
-{f"Current Context/Trends:\n{serp_context}\n" if serp_context else ""}
-
-{f"Additional Instructions:\n{additional_instructions}\n" if additional_instructions else ""}
-
-Generate the complete content in markdown format. Make it comprehensive, informative, and engaging.
+{trends_section}{instructions_section}Generate the complete content in markdown format. Make it comprehensive, informative, and engaging.
 Include relevant data, examples, and insights throughout the content.
 
 Content:"""
@@ -120,6 +125,11 @@ Content:"""
         """
         system_prompt = """You are an expert content writer. Generate detailed, informative content for a specific section."""
 
+        # Build context section separately to avoid f-string backslash issue
+        context_section = ""
+        if context:
+            context_section = f"Context:\n{context}\n\n"
+
         prompt = f"""Write detailed content for this section:
 
 Section Title: {section_title}
@@ -130,9 +140,7 @@ Section Outline:
 Available Data:
 {data}
 
-{f"Context:\n{context}\n" if context else ""}
-
-Generate comprehensive content for this section in markdown format.
+{context_section}Generate comprehensive content for this section in markdown format.
 Use appropriate sub-headings, bullet points, and formatting."""
 
         try:
