@@ -664,11 +664,16 @@ Tone: Systematic, thorough, information-rich."""
         template_text = prompt_templates[selected_template]
 
         # Button to load selected template
-        if selected_template != "Custom (Write your own)" and st.button("📋 Load Template"):
-            st.session_state.user_prompt = template_text
-            st.rerun()
+        if selected_template != "Custom (Write your own)":
+            if st.button("📋 Load Template"):
+                st.session_state.user_prompt = template_text
+                st.rerun()
 
         # User enters their own prompt or edits template
+        # Use session state as the source of truth
+        if 'user_prompt' not in st.session_state or st.session_state.user_prompt is None:
+            st.session_state.user_prompt = ""
+
         custom_prompt = st.text_area(
             "Content prompt/instructions",
             value=st.session_state.user_prompt,
@@ -678,7 +683,7 @@ Tone: Systematic, thorough, information-rich."""
             help="Describe what you want in the content - the angle, tone, key points to cover, etc."
         )
 
-        # Update session state when prompt changes
+        # Only update if user actually changed the text
         if custom_prompt != st.session_state.user_prompt:
             st.session_state.user_prompt = custom_prompt
 
