@@ -671,13 +671,12 @@ Tone: Systematic, thorough, information-rich."""
         # User enters their own prompt or edits template
         custom_prompt = st.text_area(
             "Content prompt/instructions",
-            value=st.session_state.user_prompt if st.session_state.user_prompt else template_text,
+            value=st.session_state.user_prompt,
             placeholder="Example: Write a comprehensive guide covering admission process, fees structure, top courses, and placement statistics.",
             height=250,
             key="custom_prompt_input",
             help="Describe what you want in the content - the angle, tone, key points to cover, etc."
         )
-
 
         # Update session state when prompt changes
         if custom_prompt != st.session_state.user_prompt:
