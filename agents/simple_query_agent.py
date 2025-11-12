@@ -48,11 +48,39 @@ class SimpleQueryAgent:
         try:
             # Determine which fields to select
             if selected_fields:
+                # Filter out fields that don't exist in the database
+                # These fields are not available in mvx_college_data_flattened view
+                # Map user-friendly field names to actual database column names
+                field_name_mapping = {
+                    'address': 'full_address',  # User-friendly name -> actual column name
+                    'faculty_ratio': 'faculty_student_ratio',  # User-friendly name -> actual column name
+                    'utilities': 'essential_utilities'  # User-friendly name -> actual column name
+                }
+                
+                # Fields that don't exist in the database
+                invalid_fields = [
+                    'alternative_names',  # Column doesn't exist
+                    'is_college_verified',  # Column doesn't exist
+                    'placements',  # Column doesn't exist (may be in a different table)
+                    'alumni',  # Column doesn't exist (may be in a different table)
+                    'fees'  # Column doesn't exist (fees are in degrees JSON, not a separate column)
+                ]
+                
+                # Map field names and filter invalid ones
+                mapped_fields = []
+                for field in selected_fields:
+                    if field in invalid_fields:
+                        continue  # Skip invalid fields
+                    # Use mapped name if available, otherwise use original
+                    mapped_fields.append(field_name_mapping.get(field, field))
+                
+                filtered_fields = mapped_fields
+                
                 # Ensure essential fields are always included
                 essential_fields = ['college_id', 'name', 'city', 'state']
-                all_fields = list(set(essential_fields + selected_fields))
+                all_fields = list(set(essential_fields + filtered_fields))
                 field_list = ', '.join(all_fields)
-                logger.info(f"Using custom field selection: {len(all_fields)} fields")
+                logger.info(f"Using custom field selection: {len(all_fields)} fields (filtered out {len(selected_fields) - len(filtered_fields)} invalid fields)")
             else:
                 field_list = '*'
                 logger.info("Using all fields")
@@ -304,22 +332,20 @@ class SimpleQueryAgent:
         return {
             'Basic Info': [
                 'college_id', 'name', 'city', 'state', 'district',
-                'year_of_established', 'website', 'college_is_active',
-                'is_college_verified', 'alternative_names'
+                'year_of_established', 'website', 'college_is_active'
             ],
             'Rankings & Accreditation': [
                 'rankings', 'accreditations'
             ],
             'Academics & Programs': [
-                'degrees', 'fees', 'faculty_ratio'
+                'degrees', 'faculty_ratio'  # Maps to 'faculty_student_ratio' in DB
+                # Note: 'fees' is not a separate column - fee information is in degrees JSON
             ],
             'Infrastructure & Facilities': [
-                'infrastructure', 'nearby_places', 'utilities'
-            ],
-            'Outcomes & Placement': [
-                'placements', 'alumni'
+                'infrastructure', 'nearby_places', 'utilities'  # Maps to 'essential_utilities' in DB
             ],
             'Contact & Location': [
-                'contact_info', 'address', 'city', 'state', 'district'
+                'contact_info', 'address', 'city', 'state', 'district'  # 'address' maps to 'full_address' in DB
             ]
+            # Note: 'placements' and 'alumni' are not available in mvx_college_data_flattened view
         }

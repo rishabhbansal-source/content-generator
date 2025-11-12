@@ -262,7 +262,7 @@ def display_colleges_table(colleges_data: List[Dict[str, Any]]) -> None:
     st.markdown(f"### 📊 Summary of {len(colleges_data)} College(s)")
     st.dataframe(
         df,
-        width='stretch',
+        use_container_width=True,
         hide_index=True,
         column_config={
             "Website": st.column_config.LinkColumn("Website"),

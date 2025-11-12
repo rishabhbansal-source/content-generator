@@ -831,7 +831,7 @@ def main_interface():
                         st.caption(topic['focus'])
 
                     with col2:
-                        if st.button("Select", key=f"select_topic_{i}", use_container_width=True):
+                        if st.button("Select", key=f"select_topic_{i}", width='stretch'):
                             st.session_state.selected_topic = topic.copy()
                             st.success(f"✅ Selected: {topic['topic']}")
                             st.rerun()
