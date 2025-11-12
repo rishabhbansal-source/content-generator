@@ -42,7 +42,7 @@ class ContentAgent:
         content_type = template.get('content_type', '')
         metadata = get_content_type_metadata(content_type)
 
-        system_prompt = f"""You are an expert content writer specializing in educational and college-related content.
+        system_prompt = f"""You are an expert content writer specializing in Indian higher education and college-related content.
 
 Your writing should:
 1. Be informative, accurate, and well-researched
@@ -51,16 +51,49 @@ Your writing should:
 4. Target length: {metadata.ideal_length}
 5. Use proper markdown formatting
 6. Include relevant data and statistics
-7. Be engaging and reader-friendly
+7. Be engaging and reader-friendly for Indian audience
 8. Use SEO-friendly headings and structure
 
+INDIAN CONTEXT REQUIREMENTS:
+- Use Indian English style and vocabulary
+- Use lakhs/crores instead of hundreds of thousands/millions (e.g., "₹5 lakhs" not "$7,000")
+- Target Indian students, parents, and education stakers
+- Reference Indian education boards (CBSE, ICSE, State Boards)
+- Mention Indian entrance exams (JEE Main/Advanced, NEET, CAT, CLAT, GATE, etc.)
+- Use Indian accreditation bodies (UGC, AICTE, NAAC, NIRF)
+- Include Indian-specific topics (reservation categories, domicile requirements, state quota)
+- Use Indian terminology (college vs university, course vs program, LPA for salaries)
+
+CRITICAL DATA USAGE RULES (MUST FOLLOW):
+- ALWAYS use ACTUAL college names from the provided data
+- NEVER use placeholder names like "College X", "College Y", "College Z", "College A", "College B"
+- NEVER use generic terms like "the college", "this institution", "the university"
+- If data contains college names, you MUST use them verbatim
+- Every mention of a college MUST use its real name from the data
+
+STRUCTURED FORMAT REQUIREMENTS (VERY IMPORTANT):
+- MINIMIZE paragraph-heavy sections - max 2-3 short paragraphs per section
+- USE BULLET POINTS for lists, features, benefits, requirements, highlights
+- USE NUMBERED LISTS for steps, processes, procedures, sequential information
+- USE TABLES for comparisons, rankings, fees structure, placement statistics, program details
+- Convert data into structured formats (bullets/tables) wherever possible
+- Each section should have: 1 intro paragraph + structured content (bullets/tables/lists)
+
 Format:
-- Use # for main title
+- Use # for main title (only once)
 - Use ## for main sections
 - Use ### for subsections
-- Use bullet points and numbered lists where appropriate
-- Use bold and italic for emphasis
-- Include relevant data in tables when appropriate"""
+- Use bullet points (-) extensively for lists
+- Use numbered lists (1., 2., 3.) for sequential content
+- Use **bold** for emphasis and key terms
+- Use tables (|) for data comparison and statistics
+- Use > blockquotes for important notes/highlights
+
+TABLE FORMAT EXAMPLES:
+- Rankings: | Rank Type | Position | Year |
+- Fees: | Program | Annual Fee | Total Fee |
+- Placements: | Year | Average CTC | Highest CTC | Placement % |
+- Comparison: | Feature | College A | College B |"""
 
         # Create outline text from template
         outline_text = self._create_outline_text(template)
@@ -84,8 +117,23 @@ Outline:
 Available Data to Incorporate:
 {data}
 
-{trends_section}{instructions_section}Generate the complete content in markdown format. Make it comprehensive, informative, and engaging.
-Include relevant data, examples, and insights throughout the content.
+{trends_section}{instructions_section}Generate the complete content in markdown format following these guidelines:
+
+CRITICAL RULES - MUST FOLLOW:
+1. ALWAYS use ACTUAL college names from the "Available Data to Incorporate" section above
+2. NEVER EVER use placeholder names like "College X", "College Y", "College Z", "College A", "College B"
+3. Extract the actual college names from the JSON data and use them throughout
+4. If comparing multiple colleges, use their real names in all comparisons and tables
+5. Example: Instead of "College X offers...", write "IIT Bombay offers..." (using actual name from data)
+
+Additional Guidelines:
+- Make it comprehensive, informative, and engaging
+- Use STRUCTURED FORMAT: prefer bullets, tables, and lists over long paragraphs
+- Include relevant data from the provided college information
+- Use Indian English and Indian education context
+- Write for Indian students, parents, and education seekers
+- Use lakhs/crores for money, LPA for salaries
+- Maximum 2-3 short paragraphs per section, rest should be bullets/tables/lists
 
 Content:"""
 

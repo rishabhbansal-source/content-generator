@@ -27,6 +27,8 @@ class SimpleQueryAgent:
         user_query: str,
         content_type: str,
         selected_college_id: Optional[int] = None,
+        selected_college_ids: Optional[List[int]] = None,
+        selected_fields: Optional[List[str]] = None,
         limit: int = 50
     ) -> Dict[str, Any]:
         """
@@ -36,17 +38,41 @@ class SimpleQueryAgent:
             user_query: User's content request
             content_type: Type of content
             selected_college_id: Optional specific college ID to filter by
+            selected_college_ids: Optional list of college IDs (for comparison)
+            selected_fields: Optional list of specific fields to fetch (None = all fields)
             limit: Maximum number of colleges to fetch
 
         Returns:
             Dictionary with SQL query and fetched data
         """
         try:
+            # Determine which fields to select
+            if selected_fields:
+                # Ensure essential fields are always included
+                essential_fields = ['college_id', 'name', 'city', 'state']
+                all_fields = list(set(essential_fields + selected_fields))
+                field_list = ', '.join(all_fields)
+                logger.info(f"Using custom field selection: {len(all_fields)} fields")
+            else:
+                field_list = '*'
+                logger.info("Using all fields")
+
             # Build simple query using materialized view
-            if selected_college_id:
-                # Fetch specific college
+            if selected_college_ids and len(selected_college_ids) > 0:
+                # Fetch multiple specific colleges (for comparison)
+                id_list = ','.join(map(str, selected_college_ids))
                 sql_query = f"""
-                    SELECT *
+                    SELECT {field_list}
+                    FROM mvx_college_data_flattened
+                    WHERE college_id IN ({id_list})
+                        AND college_is_active = true
+                    ORDER BY college_id;
+                """
+                logger.info(f"Fetching {len(selected_college_ids)} colleges for comparison: {selected_college_ids}")
+            elif selected_college_id:
+                # Fetch single specific college
+                sql_query = f"""
+                    SELECT {field_list}
                     FROM mvx_college_data_flattened
                     WHERE college_id = {selected_college_id}
                         AND college_is_active = true
@@ -67,7 +93,7 @@ class SimpleQueryAgent:
                 where_clause = " AND ".join(where_clauses)
 
                 sql_query = f"""
-                    SELECT *
+                    SELECT {field_list}
                     FROM mvx_college_data_flattened
                     WHERE {where_clause}
                     ORDER BY year_of_established DESC NULLS LAST
@@ -240,3 +266,60 @@ class SimpleQueryAgent:
         except Exception as e:
             logger.error(f"Error searching colleges: {e}")
             return []
+
+    def get_available_fields(self) -> List[Dict[str, str]]:
+        """
+        Get list of available fields in mvx_college_data_flattened view.
+
+        Returns:
+            List of dictionaries with column_name, data_type
+        """
+        try:
+            schema = self.db.get_table_schema('mvx_college_data_flattened')
+            logger.info(f"Retrieved {len(schema)} fields from schema")
+            return schema
+        except Exception as e:
+            logger.error(f"Error fetching schema: {e}")
+            # Return common fields as fallback
+            return [
+                {'column_name': 'college_id', 'data_type': 'integer'},
+                {'column_name': 'name', 'data_type': 'text'},
+                {'column_name': 'city', 'data_type': 'text'},
+                {'column_name': 'state', 'data_type': 'text'},
+                {'column_name': 'year_of_established', 'data_type': 'integer'},
+                {'column_name': 'website', 'data_type': 'text'},
+                {'column_name': 'rankings', 'data_type': 'jsonb'},
+                {'column_name': 'accreditations', 'data_type': 'jsonb'},
+                {'column_name': 'degrees', 'data_type': 'jsonb'},
+                {'column_name': 'infrastructure', 'data_type': 'jsonb'},
+            ]
+
+    def get_field_groups(self) -> Dict[str, List[str]]:
+        """
+        Get predefined field groups for easy selection.
+
+        Returns:
+            Dictionary mapping group names to field lists
+        """
+        return {
+            'Basic Info': [
+                'college_id', 'name', 'city', 'state', 'district',
+                'year_of_established', 'website', 'college_is_active',
+                'is_college_verified', 'alternative_names'
+            ],
+            'Rankings & Accreditation': [
+                'rankings', 'accreditations'
+            ],
+            'Academics & Programs': [
+                'degrees', 'fees', 'faculty_ratio'
+            ],
+            'Infrastructure & Facilities': [
+                'infrastructure', 'nearby_places', 'utilities'
+            ],
+            'Outcomes & Placement': [
+                'placements', 'alumni'
+            ],
+            'Contact & Location': [
+                'contact_info', 'address', 'city', 'state', 'district'
+            ]
+        }

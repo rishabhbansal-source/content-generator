@@ -39,17 +39,35 @@ class TopicAgent:
         """
         metadata = get_content_type_metadata(content_type)
 
-        system_prompt = f"""You are an expert content strategist specializing in higher education and college-related content.
+        system_prompt = f"""You are an expert content strategist specializing in Indian higher education and college-related content.
 
 Your task is to generate {num_topics} diverse and engaging topic ideas for content creation.
 
-Each topic should:
-1. Be specific and focused
-2. Align with the content type: {metadata.name}
-3. Be relevant to students, parents, and education seekers
-4. Make use of available college data
-5. Be SEO-friendly and engaging
-6. Cover different aspects (admissions, rankings, facilities, placements, student life, etc.)
+CRITICAL REQUIREMENTS - Each topic MUST:
+1. Be SPECIFIC to the actual college(s) data provided (use actual college names, rankings, fees, programs)
+2. Reference ACTUAL data points (specific NIRF ranks, NAAC grades, fees in lakhs, placement percentages, program names)
+3. Use INDIAN context: Indian English style, target Indian students/parents, reference Indian education system
+4. Align with the content type: {metadata.name}
+5. Be SEO-friendly with college name + specific aspect (e.g., "IIT Delhi Placements 2024")
+6. Be directly answerable using the provided data
+
+INDIAN CONTEXT:
+- Use Indian English (lakhs/crores instead of hundreds of thousands/millions)
+- Target Indian students and parents
+- Reference Indian education boards (CBSE, ICSE, State Boards)
+- Mention Indian entrance exams (JEE, NEET, CAT, CLAT, etc.)
+- Use Indian accreditation bodies (UGC, AICTE, NAAC, NIRF)
+- Use Indian terminology (college vs university, reservation categories, domicile)
+
+BAD EXAMPLES (too generic, avoid these):
+- "Complete Admission Guide"
+- "Rankings and Accreditations"
+- "Campus Infrastructure Overview"
+
+GOOD EXAMPLES (specific, data-driven):
+- "IIT Bombay NIRF Rank #1: Complete BTech Admission Guide for 2025 (JEE Advanced Cutoff, Fees ₹2.5 Lakhs)"
+- "MIT Manipal vs VIT Vellore: Placement Comparison 2024 (₹8.5 LPA vs ₹7.2 LPA Average CTC)"
+- "Top 5 Engineering Programs at NIT Trichy with 95%+ Placement Rate and ₹15 LPA Average Package"
 
 Tone: {metadata.tone}
 Ideal Length: {metadata.ideal_length}"""
@@ -59,25 +77,31 @@ Ideal Length: {metadata.ideal_length}"""
 Available Data Summary:
 {college_data_summary}
 
-Generate topics that cover diverse aspects such as:
-- Academic programs and rankings
-- Admission process and eligibility
-- Infrastructure and facilities
-- Placements and career outcomes
-- Student life and campus culture
-- Fees structure and scholarships
-- Location advantages
-- Comparison with peer institutions
+CRITICAL INSTRUCTIONS:
+1. Each topic MUST include the actual college name(s) from the data above
+2. Each topic MUST reference at least one specific data point (NIRF rank number, NAAC grade, fees in lakhs, placement %, program names)
+3. Topics should be DIRECT and SPECIFIC, not generic - use actual numbers and facts
+4. Use Indian English and Indian education context (JEE/NEET, lakhs/crores, NIRF/NAAC)
+5. Topics must be directly answerable using the provided college data
+
+Topic Focus Areas (use actual data for each):
+- Academic programs: Mention specific program names, duration, seats available
+- Rankings: Use actual NIRF ranks, NAAC grades from the data
+- Admissions: Reference actual entrance exams (JEE, NEET), eligibility criteria, cutoffs if available
+- Fees: Use actual fee amounts in lakhs from the data
+- Placements: Use actual placement percentages/packages in LPA from the data
+- Infrastructure: Mention specific facilities by name from the data
+- Location: Use actual city/state and nearby advantages from the data
 
 IMPORTANT: Format each topic EXACTLY like this:
 
 1.
-Topic: [Your specific topic title]
-Focus: [Brief description of what this topic covers]
+Topic: [College Name + Specific Aspect with Data Point]
+Focus: [Brief description mentioning specific details from data]
 
 2.
-Topic: [Your specific topic title]
-Focus: [Brief description of what this topic covers]
+Topic: [College Name + Specific Aspect with Data Point]
+Focus: [Brief description mentioning specific details from data]
 
 Generate all {num_topics} topics now:"""
 
@@ -92,13 +116,16 @@ Generate all {num_topics} topics now:"""
             # Parse the response into structured topics
             topics = self._parse_topics(response)
 
-            # If parsing failed, use default topics
-            if len(topics) == 0:
-                logger.warning("Parsing returned 0 topics, using defaults")
+            # Validate topics for specificity
+            validated_topics = self._validate_topic_specificity(topics, college_data_summary)
+
+            # If no valid topics, use defaults
+            if len(validated_topics) == 0:
+                logger.warning("No valid specific topics generated, using defaults")
                 return self._get_default_topics(content_type)
 
-            logger.info(f"Generated {len(topics)} topic ideas")
-            return topics
+            logger.info(f"Generated {len(validated_topics)} validated topic ideas")
+            return validated_topics
 
         except Exception as e:
             logger.error(f"Error generating topics: {e}")
@@ -181,6 +208,91 @@ Generate all {num_topics} topics now:"""
             logger.warning(response)
 
         return cleaned_topics
+
+    def _extract_college_names(self, college_data_summary: str) -> List[str]:
+        """
+        Extract college names from data summary.
+
+        Args:
+            college_data_summary: Summary of college data
+
+        Returns:
+            List of college names
+        """
+        import re
+
+        names = []
+        # Look for patterns like "- College Name in City, State"
+        matches = re.findall(r'-\s+([^(]+?)\s+(?:in|,|\()', college_data_summary)
+        for match in matches:
+            name = match.strip()
+            if name and len(name) > 3:  # Avoid short matches
+                names.append(name)
+
+        logger.debug(f"Extracted {len(names)} college names: {names}")
+        return names
+
+    def _validate_topic_specificity(
+        self,
+        topics: List[Dict[str, str]],
+        college_data_summary: str
+    ) -> List[Dict[str, str]]:
+        """
+        Validate that topics are specific and not generic.
+
+        Args:
+            topics: List of topic dictionaries
+            college_data_summary: Summary of college data
+
+        Returns:
+            List of validated topics
+        """
+        import re
+
+        if not topics:
+            return []
+
+        # Extract college names from data
+        college_names = self._extract_college_names(college_data_summary)
+
+        validated = []
+        rejected = []
+
+        for topic in topics:
+            topic_text = topic['topic']
+            topic_lower = topic_text.lower()
+
+            # Check 1: Does topic mention at least one college name?
+            mentions_college = any(
+                name.lower() in topic_lower
+                for name in college_names
+                if len(name) > 3
+            )
+
+            # Check 2: Does topic contain numbers (rankings, fees, percentages)?
+            has_numbers = bool(re.search(r'\d+', topic_text))
+
+            # Check 3: Does topic contain Indian context keywords?
+            indian_keywords = ['nirf', 'naac', 'jee', 'neet', 'cat', 'clat', 'lakh', 'crore',
+                             'lpa', 'btech', 'mba', 'mbbs', 'aicte', 'ugc']
+            has_indian_context = any(keyword in topic_lower for keyword in indian_keywords)
+
+            # Topic is valid if it meets at least 2 of 3 criteria
+            score = sum([mentions_college, has_numbers, has_indian_context])
+
+            if score >= 2:
+                validated.append(topic)
+                logger.debug(f"✓ Validated topic (score {score}/3): {topic_text[:60]}")
+            else:
+                rejected.append(topic_text)
+                logger.debug(f"✗ Rejected generic topic (score {score}/3): {topic_text[:60]}")
+
+        # Log summary
+        if rejected:
+            logger.info(f"Rejected {len(rejected)} generic topics: {rejected[:3]}")
+        logger.info(f"Validated {len(validated)}/{len(topics)} topics as specific")
+
+        return validated
 
     def _get_default_topics(self, content_type: str) -> List[Dict[str, str]]:
         """

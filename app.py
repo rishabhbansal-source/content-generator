@@ -21,6 +21,7 @@ from agents.content_agent import ContentAgent
 from utils.serpapi_helper import SerpAPIHelper
 from utils.content_types import get_content_type_options, get_content_type_display_names
 from utils.college_data_display import display_college_data_preview
+from utils.keyword_parser import KeywordParser
 from config.llm_config import MODEL_OPTIONS
 
 # Page configuration
@@ -116,6 +117,14 @@ def initialize_session_state():
         st.session_state.colleges_list = []
     if 'selected_college' not in st.session_state:
         st.session_state.selected_college = None
+    if 'selected_college_ids' not in st.session_state:
+        st.session_state.selected_college_ids = []
+    if 'comparison_colleges_list' not in st.session_state:
+        st.session_state.comparison_colleges_list = []  # List of {id, name, city, state}
+    if 'selected_fields' not in st.session_state:
+        st.session_state.selected_fields = None
+    if 'user_keywords' not in st.session_state:
+        st.session_state.user_keywords = []
 
     # Workflow state
     if 'data_fetched' not in st.session_state:
@@ -358,24 +367,198 @@ def main_interface():
         key="content_type"
     )
 
+    # Field Selection (Smart Presets)
+    st.markdown("#### 🔧 Database Fields Selection")
+    with st.expander("📋 Select which data fields to fetch (optional)", expanded=False):
+        if st.session_state.query_agent:
+            field_groups = st.session_state.query_agent.get_field_groups()
+
+            # Smart defaults based on content type
+            if content_type == 'comparison':
+                default_groups = ['Basic Info', 'Rankings & Accreditation', 'Academics & Programs', 'Outcomes & Placement']
+            else:
+                default_groups = ['Basic Info', 'Rankings & Accreditation']
+
+            selected_groups = st.multiselect(
+                "Select field groups",
+                list(field_groups.keys()),
+                default=default_groups,
+                help="Choose which data categories to include"
+            )
+
+            # Collect all fields from selected groups
+            selected_field_list = []
+            for group in selected_groups:
+                selected_field_list.extend(field_groups[group])
+
+            # Remove duplicates
+            selected_field_list = list(set(selected_field_list))
+
+            # Show selected fields count
+            if selected_field_list:
+                st.info(f"📊 Will fetch {len(selected_field_list)} fields")
+                st.session_state.selected_fields = selected_field_list
+            else:
+                st.session_state.selected_fields = None
+                st.info("📊 Will fetch all available fields")
+
+            # Option to manually add/remove specific fields
+            if st.checkbox("🎯 Manually adjust fields", value=False):
+                all_available_fields = []
+                for fields in field_groups.values():
+                    all_available_fields.extend(fields)
+                all_available_fields = list(set(all_available_fields))
+
+                manual_fields = st.multiselect(
+                    "Manually select/deselect fields",
+                    all_available_fields,
+                    default=selected_field_list if selected_field_list else [],
+                    help="Fine-tune your field selection"
+                )
+                st.session_state.selected_fields = manual_fields if manual_fields else None
+        else:
+            st.warning("⚠️ Initialize the system first to enable field selection")
+            st.session_state.selected_fields = None
+
     # College Selection (Optional)
     st.markdown("#### 🎯 College Selection (Optional)")
-    
+
+    # For comparison content, offer multi-select option
+    is_comparison = (content_type == 'comparison')
+    if is_comparison:
+        st.info("💡 For comparison content, you can select 2-5 colleges to compare")
+
     # Filter options container
+    if is_comparison:
+        filter_options = ["Multiple Colleges (Comparison)", "Search by Name/City", "Select from List"]
+    else:
+        filter_options = ["Search by Name/City", "Select from List"]
+
     filter_option = st.radio(
         "Filter colleges by:",
-        ["Search by Name/City", "Select from List"],
+        filter_options,
         key="college_filter_option",
         horizontal=False
     )
     
     selected_college_id = None
-    
+
     # Handle different filter options
-    if filter_option == "All Colleges":
-        st.session_state.selected_college = None
-        st.info("ℹ️ Content will be generated for all colleges matching your query")
-    
+    if filter_option == "Multiple Colleges (Comparison)":
+        if not st.session_state.db:
+            st.warning("⚠️ Please initialize the system first to enable college search")
+        else:
+            # Show current comparison list
+            if st.session_state.comparison_colleges_list:
+                st.markdown("**📋 Selected Colleges for Comparison:**")
+                for idx, college in enumerate(st.session_state.comparison_colleges_list):
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        st.write(f"{idx + 1}. {college['name']} - {college['city']}, {college['state']}")
+                    with col2:
+                        if st.button("🗑️ Remove", key=f"remove_comparison_{idx}"):
+                            st.session_state.comparison_colleges_list.pop(idx)
+                            st.rerun()
+
+                # Update selected_college_ids from comparison list
+                st.session_state.selected_college_ids = [c['id'] for c in st.session_state.comparison_colleges_list]
+
+                if len(st.session_state.comparison_colleges_list) >= 2:
+                    st.success(f"✅ {len(st.session_state.comparison_colleges_list)} colleges selected (Ready to fetch data)")
+                else:
+                    st.warning(f"⚠️ Add at least {2 - len(st.session_state.comparison_colleges_list)} more college(s)")
+
+                st.markdown("---")
+
+            # Search and add colleges
+            st.markdown("**🔍 Search and Add Colleges:**")
+            search_term = st.text_input(
+                "Search for colleges",
+                placeholder="Enter college name, city, or state (e.g., 'IIT Bombay', 'Delhi', 'Engineering')",
+                key="comparison_college_search",
+                help="Search to find colleges, then click 'Add' to include them in comparison"
+            )
+
+            if search_term:
+                with st.spinner("🔍 Searching colleges..."):
+                    # First, get total count
+                    count_query = f"""
+                        SELECT COUNT(*) as total
+                        FROM mvx_college_data_flattened
+                        WHERE college_is_active = true
+                            AND (
+                                LOWER(name) LIKE LOWER('%{search_term}%')
+                                OR LOWER(city) LIKE LOWER('%{search_term}%')
+                                OR LOWER(state) LIKE LOWER('%{search_term}%')
+                            );
+                    """
+                    count_result = st.session_state.db.execute_query(count_query)
+                    total_count = count_result[0]['total'] if count_result else 0
+
+                    # Show result count
+                    if total_count > 0:
+                        st.info(f"📊 Found {total_count} matching college(s)")
+
+                        # Add limit selector if there are many results
+                        result_limit = 20  # Default to 20 for comparison
+                        if total_count > 20:
+                            result_limit = st.select_slider(
+                                "Number of results to show",
+                                options=[20, 50, 100, 200],
+                                value=20,
+                                key="comparison_search_limit_slider"
+                            )
+
+                        limit_clause = f"LIMIT {result_limit}"
+
+                        # Fetch colleges
+                        search_query = f"""
+                            SELECT college_id, name as college_name, city, state
+                            FROM mvx_college_data_flattened
+                            WHERE college_is_active = true
+                                AND (
+                                    LOWER(name) LIKE LOWER('%{search_term}%')
+                                    OR LOWER(city) LIKE LOWER('%{search_term}%')
+                                    OR LOWER(state) LIKE LOWER('%{search_term}%')
+                                )
+                            ORDER BY name
+                            {limit_clause};
+                        """
+                        search_results = st.session_state.db.execute_query(search_query)
+                    else:
+                        search_results = []
+
+                    if search_results:
+                        st.markdown(f"**Search Results** (showing {len(search_results)} of {total_count}):")
+
+                        # Display results with Add buttons
+                        for college in search_results:
+                            col1, col2 = st.columns([4, 1])
+                            with col1:
+                                st.write(f"• {college['college_name']} - {college['city']}, {college['state']}")
+                            with col2:
+                                # Check if already added
+                                already_added = any(c['id'] == college['college_id'] for c in st.session_state.comparison_colleges_list)
+                                at_limit = len(st.session_state.comparison_colleges_list) >= 5
+
+                                if already_added:
+                                    st.button("✓ Added", key=f"added_{college['college_id']}", disabled=True)
+                                elif at_limit:
+                                    st.button("Limit (5)", key=f"limit_{college['college_id']}", disabled=True)
+                                else:
+                                    if st.button("➕ Add", key=f"add_comparison_{college['college_id']}"):
+                                        st.session_state.comparison_colleges_list.append({
+                                            'id': college['college_id'],
+                                            'name': college['college_name'],
+                                            'city': college['city'],
+                                            'state': college['state']
+                                        })
+                                        st.rerun()
+                    else:
+                        st.warning("⚠️ No colleges found matching your search")
+            else:
+                st.info("💡 Enter a search term to find colleges. You can search multiple times to add different colleges.")
+
     elif filter_option == "Search by Name/City":
         if not st.session_state.db:
             st.warning("⚠️ Please initialize the system first to enable college search")
@@ -389,31 +572,64 @@ def main_interface():
 
             if search_term:
                 with st.spinner("🔍 Searching colleges..."):
-                    search_query = f"""
-                        SELECT college_id, name as college_name, city, state
+                    # First, get total count
+                    count_query = f"""
+                        SELECT COUNT(*) as total
                         FROM mvx_college_data_flattened
                         WHERE college_is_active = true
                             AND (
                                 LOWER(name) LIKE LOWER('%{search_term}%')
                                 OR LOWER(city) LIKE LOWER('%{search_term}%')
                                 OR LOWER(state) LIKE LOWER('%{search_term}%')
-                            )
-                        ORDER BY name
-                        LIMIT 50;
+                            );
                     """
-                    search_results = st.session_state.db.execute_query(search_query)
-                    
+                    count_result = st.session_state.db.execute_query(count_query)
+                    total_count = count_result[0]['total'] if count_result else 0
+
+                    # Show result count
+                    if total_count > 0:
+                        st.info(f"📊 Found {total_count} matching college(s)")
+
+                        # Add limit selector if there are many results
+                        if total_count > 100:
+                            result_limit = st.select_slider(
+                                "Number of results to show",
+                                options=[100, 200, 500, 1000, "All"],
+                                value=200,
+                                key="search_limit_slider"
+                            )
+                            limit_clause = f"LIMIT {result_limit}" if result_limit != "All" else ""
+                        else:
+                            limit_clause = ""
+
+                        # Fetch colleges
+                        search_query = f"""
+                            SELECT college_id, name as college_name, city, state
+                            FROM mvx_college_data_flattened
+                            WHERE college_is_active = true
+                                AND (
+                                    LOWER(name) LIKE LOWER('%{search_term}%')
+                                    OR LOWER(city) LIKE LOWER('%{search_term}%')
+                                    OR LOWER(state) LIKE LOWER('%{search_term}%')
+                                )
+                            ORDER BY name
+                            {limit_clause};
+                        """
+                        search_results = st.session_state.db.execute_query(search_query)
+                    else:
+                        search_results = []
+
                     if search_results:
                         college_options = {
                             f"{c['college_name']} - {c['city']}, {c['state']}": c['college_id']
                             for c in search_results
                         }
-                        
+
                         selected_college_name = st.selectbox(
                             "Select college",
                             list(college_options.keys()),
                             key="searched_college_select",
-                            help=f"Found {len(search_results)} matching college(s)"
+                            help=f"Showing {len(search_results)} of {total_count} matching college(s)"
                         )
                         
                         if selected_college_name:
@@ -431,16 +647,31 @@ def main_interface():
         if not st.session_state.colleges_list:
             st.warning("⚠️ Please initialize the system first to load college list")
         else:
+            total_colleges = len(st.session_state.colleges_list)
+            st.info(f"📊 Total colleges available: {total_colleges}")
+
+            # Add limit selector if there are many colleges
+            if total_colleges > 100:
+                show_limit = st.select_slider(
+                    "Number of colleges to show in dropdown",
+                    options=[100, 200, 500, 1000, "All"],
+                    value=200,
+                    key="list_limit_slider"
+                )
+                limit = total_colleges if show_limit == "All" else show_limit
+            else:
+                limit = total_colleges
+
             college_options = {
                 f"{c['college_name']} - {c['city']}, {c['state']}": c['college_id']
-                for c in st.session_state.colleges_list[:100]  # Show first 100
+                for c in st.session_state.colleges_list[:limit]
             }
-            
+
             selected_college_name = st.selectbox(
                 "Select college",
                 ["None"] + list(college_options.keys()),
                 key="list_college_select",
-                help=f"Showing {min(100, len(st.session_state.colleges_list))} colleges from the list"
+                help=f"Showing {len(college_options)} of {total_colleges} colleges"
             )
             
             if selected_college_name != "None":
@@ -458,20 +689,25 @@ def main_interface():
 
         try:
             with st.spinner("Fetching college data..."):
-                # Get selected college ID (if any)
+                # Get selected college IDs (for comparison) or single ID
+                college_ids = st.session_state.selected_college_ids if st.session_state.selected_college_ids else None
                 college_id = st.session_state.selected_college if st.session_state.selected_college else None
 
                 # Generate a simple query based on selection
-                if college_id:
+                if college_ids and len(college_ids) > 0:
+                    auto_query = f"Fetch detailed information for {len(college_ids)} colleges for comparison"
+                elif college_id:
                     auto_query = f"Fetch detailed information for college ID {college_id}"
                 else:
                     auto_query = f"Fetch information about colleges for {content_type} content"
 
-                # Fetch data using simplified agent
+                # Fetch data using simplified agent with field selection
                 result = st.session_state.query_agent.fetch_college_data(
                     auto_query,
                     content_type,
-                    selected_college_id=college_id
+                    selected_college_id=college_id,
+                    selected_college_ids=college_ids,
+                    selected_fields=st.session_state.selected_fields
                 )
 
                 st.session_state.fetched_data = result
@@ -509,14 +745,57 @@ def main_interface():
         if st.button("✨ Generate Topic Suggestions", key="generate_topics_btn"):
             try:
                 with st.spinner("Generating topic ideas based on college data..."):
-                    # Prepare data summary
-                    data_summary = f"Found {st.session_state.fetched_data['row_count']} college(s)\n"
+                    # Prepare detailed data summary with rankings, fees, programs
+                    row_count = st.session_state.fetched_data['row_count']
+                    data_summary = f"Found {row_count} college(s)\n\n"
+
                     if st.session_state.fetched_data['data']:
-                        # Create a concise summary
+                        # Create detailed summary for first 3 colleges
                         colleges = st.session_state.fetched_data['data'][:3]
                         for college in colleges:
-                            data_summary += f"\n- {college.get('name', 'N/A')} in {college.get('city', 'N/A')}, {college.get('state', 'N/A')}"
-                            data_summary += f"\n  Accreditations: {len(college.get('accreditations', []))}, Facilities: {len(college.get('infrastructure', []))}"
+                            name = college.get('name', 'N/A')
+                            city = college.get('city', 'N/A')
+                            state = college.get('state', 'N/A')
+                            data_summary += f"\n### {name} ({city}, {state})\n"
+
+                            # Year established
+                            year = college.get('year_of_established')
+                            if year:
+                                data_summary += f"- Established: {year}\n"
+
+                            # Rankings
+                            rankings = college.get('rankings', {})
+                            if rankings and isinstance(rankings, dict):
+                                if 'nirf_rank' in rankings:
+                                    data_summary += f"- NIRF Rank: {rankings['nirf_rank']}\n"
+                                if 'naac_grade' in rankings:
+                                    data_summary += f"- NAAC Grade: {rankings['naac_grade']}\n"
+
+                            # Top programs/degrees
+                            degrees = college.get('degrees', [])
+                            if degrees and isinstance(degrees, list) and len(degrees) > 0:
+                                programs = []
+                                for deg in degrees[:3]:  # First 3 programs
+                                    if isinstance(deg, dict) and 'program_name' in deg:
+                                        programs.append(deg['program_name'])
+                                if programs:
+                                    data_summary += f"- Programs: {', '.join(programs)}\n"
+
+                            # Fees (if available)
+                            if 'fees' in college and college['fees']:
+                                data_summary += f"- Fees: {college['fees']}\n"
+
+                            # Accreditations count
+                            accreds = college.get('accreditations', [])
+                            if accreds and isinstance(accreds, list):
+                                data_summary += f"- Accreditations: {len(accreds)}\n"
+
+                            # Infrastructure count
+                            infra = college.get('infrastructure', [])
+                            if infra and isinstance(infra, list):
+                                data_summary += f"- Facilities: {len(infra)}\n"
+
+                            data_summary += "\n"
 
                     # Generate topics
                     topics = st.session_state.topic_agent.generate_topics(
@@ -552,7 +831,7 @@ def main_interface():
                         st.caption(topic['focus'])
 
                     with col2:
-                        if st.button("Select", key=f"select_topic_{i}", width='stretch'):
+                        if st.button("Select", key=f"select_topic_{i}", use_container_width=True):
                             st.session_state.selected_topic = topic.copy()
                             st.success(f"✅ Selected: {topic['topic']}")
                             st.rerun()
@@ -692,6 +971,76 @@ Tone: Systematic, thorough, information-rich."""
             st.markdown(st.session_state.user_prompt)
             st.markdown('</div>', unsafe_allow_html=True)
 
+    # Section 3.5: Keyword Upload (Optional)
+    if st.session_state.user_prompt:
+        st.markdown("---")
+        st.markdown("### 🔑 Target Keywords (Optional - for SEO)")
+        st.markdown("Upload or enter keywords to naturally integrate into the content for better SEO.")
+
+        with st.expander("📤 Add Keywords", expanded=False):
+            keyword_method = st.radio(
+                "Choose keyword input method:",
+                ["Manual Input", "Upload CSV", "Upload TXT"],
+                key="keyword_method",
+                horizontal=True
+            )
+
+            if keyword_method == "Manual Input":
+                manual_keywords = st.text_area(
+                    "Enter keywords (comma-separated or one per line)",
+                    placeholder="engineering colleges, NIRF rankings, placement statistics, admission process",
+                    height=100,
+                    key="manual_keywords_input"
+                )
+
+                if st.button("✅ Save Keywords", key="save_manual_keywords"):
+                    if manual_keywords:
+                        keywords = KeywordParser.parse_manual_input(manual_keywords)
+                        st.session_state.user_keywords = keywords
+                        st.success(f"✅ Saved {len(keywords)} keywords")
+                    else:
+                        st.session_state.user_keywords = []
+                        st.info("Keywords cleared")
+
+            elif keyword_method == "Upload CSV":
+                uploaded_csv = st.file_uploader(
+                    "Upload CSV file with keywords",
+                    type=['csv'],
+                    key="csv_keyword_upload",
+                    help="CSV file should have keywords in the first column or a column named 'keyword'"
+                )
+
+                if uploaded_csv:
+                    csv_content = uploaded_csv.read()
+                    keywords = KeywordParser.parse_csv(csv_content)
+                    st.session_state.user_keywords = keywords
+                    st.success(f"✅ Loaded {len(keywords)} keywords from CSV")
+
+            elif keyword_method == "Upload TXT":
+                uploaded_txt = st.file_uploader(
+                    "Upload TXT file with keywords",
+                    type=['txt'],
+                    key="txt_keyword_upload",
+                    help="TXT file should have one keyword per line or comma-separated"
+                )
+
+                if uploaded_txt:
+                    txt_content = uploaded_txt.read()
+                    keywords = KeywordParser.parse_txt(txt_content)
+                    st.session_state.user_keywords = keywords
+                    st.success(f"✅ Loaded {len(keywords)} keywords from TXT")
+
+            # Show loaded keywords
+            if st.session_state.user_keywords:
+                st.markdown(f"**Current Keywords ({len(st.session_state.user_keywords)}):**")
+                st.write(", ".join(st.session_state.user_keywords[:20]))
+                if len(st.session_state.user_keywords) > 20:
+                    st.caption(f"... and {len(st.session_state.user_keywords) - 20} more")
+
+                if st.button("🗑️ Clear Keywords", key="clear_keywords"):
+                    st.session_state.user_keywords = []
+                    st.rerun()
+
     # Section 4: Template Generation
     if st.session_state.user_prompt:
         st.markdown("---")
@@ -767,12 +1116,24 @@ Tone: Systematic, thorough, information-rich."""
                     if st.session_state.serp_helper:
                         serp_context = st.session_state.serp_helper.get_context_for_llm(st.session_state.user_prompt)
 
+                    # Add keywords to additional instructions if available
+                    final_instructions = additional_instructions
+                    if st.session_state.user_keywords:
+                        keyword_str = KeywordParser.format_keywords_for_prompt(
+                            st.session_state.user_keywords,
+                            max_keywords=20
+                        )
+                        if final_instructions:
+                            final_instructions = f"{final_instructions}\n\n{keyword_str}"
+                        else:
+                            final_instructions = keyword_str
+
                     # Generate content
                     content = st.session_state.content_agent.generate_content(
                         st.session_state.template,
                         data_str,
                         serp_context,
-                        additional_instructions
+                        final_instructions
                     )
 
                     st.session_state.final_content = content

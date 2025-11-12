@@ -41,7 +41,7 @@ class TemplateAgent:
         """
         metadata = get_content_type_metadata(content_type)
 
-        system_prompt = f"""You are a content strategist creating detailed content outlines.
+        system_prompt = f"""You are a content strategist creating detailed content outlines for Indian higher education content.
 
 Create a comprehensive outline that:
 1. Follows the {metadata.name} format
@@ -49,7 +49,21 @@ Create a comprehensive outline that:
 3. Lists key points for each section
 4. Incorporates available data effectively
 5. Maintains the tone: {metadata.tone}
-6. Targets length: {metadata.ideal_length}"""
+6. Targets length: {metadata.ideal_length}
+
+INDIAN CONTEXT REQUIREMENTS:
+- Use Indian English style (lakhs/crores, not hundreds of thousands/millions)
+- Target Indian students, parents, and education seekers
+- Reference Indian education system (CBSE, ICSE, JEE, NEET, CAT, CLAT)
+- Use Indian accreditation bodies (UGC, AICTE, NAAC, NIRF)
+- Include Indian-specific sections (reservation categories, domicile requirements, state quota)
+- Use Indian terminology and local context
+
+CRITICAL DATA USAGE RULES:
+- ALWAYS use ACTUAL college names from the data provided
+- NEVER use placeholder names like "College X", "College Y", "College Z", "College A", "College B"
+- Extract real college names from the data summary and use them in section headings and outline
+- For comparison outlines, use actual college names in comparison table headers"""
 
         # Build trends section separately to avoid f-string backslash issue
         trends_section = ""
@@ -68,11 +82,26 @@ Typical Sections: {', '.join(metadata.typical_sections)}
 Available Data:
 {data_summary}
 
-{trends_section}Create a detailed outline with:
-- Main sections/headings
+{trends_section}IMPORTANT: Use ACTUAL college names from the "Available Data" section above. Never use "College X/Y/Z" or "College A/B/C".
+
+Create a detailed outline with:
+- Main sections/headings (use actual college names in headings)
 - Sub-sections
-- Key points to cover in each section
-- Suggested data to include
+- Key points to cover in each section (use bullet points, not long paragraphs)
+- Suggested data to include (specify where tables/comparisons should be used)
+- For comparison content, specify actual college names in table headers
+
+FORMATTING REQUIREMENTS:
+- Prefer bullet points and numbered lists over paragraphs
+- Identify sections where tables would be useful (fees, rankings, placements, comparisons)
+- Keep paragraphs to minimum (max 2-3 per section)
+- Structure data in organized formats
+
+FORMAT GUIDANCE:
+- For rankings/comparisons: Use tables
+- For features/benefits: Use bullet points
+- For steps/processes: Use numbered lists
+- For data/statistics: Use tables or structured lists
 
 Format the outline clearly with hierarchical structure."""
 

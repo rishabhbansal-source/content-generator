@@ -10,6 +10,7 @@ class ContentType(Enum):
     WEB_ARTICLE = "web_article"
     FAQ_PAGE = "faq_page"
     BLOG_POST = "blog_post"
+    COMPARISON = "comparison"
 
 
 @dataclass
@@ -44,6 +45,21 @@ CONTENT_TYPE_METADATA: Dict[ContentType, ContentTypeMetadata] = {
         typical_sections=["Introduction", "Main Content", "Conclusion"],
         ideal_length="1000-2000 words",
         tone="Informative, engaging"
+    ),
+    ContentType.COMPARISON: ContentTypeMetadata(
+        name="Comparison",
+        description="Side-by-side comparison of multiple colleges",
+        typical_sections=[
+            "Overview",
+            "Rankings Comparison",
+            "Fees & Scholarships Comparison",
+            "Placement Comparison",
+            "Infrastructure & Facilities Comparison",
+            "Admission Process Comparison",
+            "Verdict & Recommendations"
+        ],
+        ideal_length="1500-2500 words",
+        tone="Analytical, objective, data-driven"
     ),
 }
 
